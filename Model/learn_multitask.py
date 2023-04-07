@@ -13,11 +13,11 @@ from sklearn.metrics import classification_report, f1_score, accuracy_score
 from sklearn.model_selection import train_test_split
 device = 'cuda' if cuda.is_available() else 'cpu'
 
-tokenizer = AlbertTokenizer.from_pretrained("albert-base-v2", do_lower_case=True)
+tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
 class NetMultiTask(torch.nn.Module):
     def __init__(self):
         super(NetMultiTask, self).__init__()
-        self.net = AlbertModel.from_pretrained("albert-base-v2")
+        self.net = RobertaModel.from_pretrained("roberta-base")
         
         self.pre_classifier1 = torch.nn.Linear(768, 768)
         self.dropout1 = torch.nn.Dropout(0.3)
@@ -43,37 +43,6 @@ class NetMultiTask(torch.nn.Module):
         output2 = self.classifier2(pooler2)
         
         return output1, output2
-
-# tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
-# class NetMultiTask(torch.nn.Module):
-#     def __init__(self):
-#         super(NetMultiTask, self).__init__()
-#         self.net = RobertaModel.from_pretrained("roberta-base")
-        
-#         self.pre_classifier1 = torch.nn.Linear(768, 768)
-#         self.dropout1 = torch.nn.Dropout(0.3)
-#         self.classifier1 = torch.nn.Linear(768, 2)
-        
-#         self.pre_classifier2 = torch.nn.Linear(768, 768)
-#         self.dropout2 = torch.nn.Dropout(0.3)
-#         self.classifier2 = torch.nn.Linear(768, 3)
-
-#     def forward(self, input_ids, attention_mask, token_type_ids):
-#         output_1 = self.net(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
-#         hidden_state = output_1[0]
-#         pooler = hidden_state[:, 0]
-      
-#         pooler1 = self.pre_classifier1(pooler)
-#         pooler1 = torch.nn.ReLU()(pooler1)
-#         pooler1 = self.dropout1(pooler1)
-#         output1 = self.classifier1(pooler1)
-
-#         pooler2 = self.pre_classifier2(pooler)
-#         pooler2 = torch.nn.ReLU()(pooler2)
-#         pooler2 = self.dropout2(pooler2)
-#         output2 = self.classifier2(pooler2)
-        
-#         return output1, output2
 
 def map_sentiment(x):
     if x == "negative":
