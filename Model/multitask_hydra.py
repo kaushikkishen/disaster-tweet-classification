@@ -1,5 +1,6 @@
 import sys
 import re
+import math
 import numpy as np
 import pandas as pd
 from collections import OrderedDict
@@ -91,6 +92,14 @@ class DataCombined(Dataset):
             'labels': (self.target[index], self.sentiment[index])
         }
 
+def check_null(x):
+    if math.isnan(x) == True:
+        print(f"null detected")
+        return 0
+    else:
+        return x
+
+
 def calcuate_accuracy(preds, targets):
     n_correct = (preds==targets).sum().item()
     return n_correct
@@ -126,10 +135,10 @@ def train_hydra(model, epoch, training_loader, lambda1, lambda2):
         _, output2 = model(d2_ids, d2_mask, d2_token_type_ids)
 
         loss1 = loss_function(output1, d1_targets)
-        d1_tr_loss += loss1.item()
+        d1_tr_loss += check_null(lambda1*loss1.item())
 
         loss2 = loss_function(output2, d2_sentiment)
-        d2_tr_loss += loss2.item()
+        d2_tr_loss += check_null(lambda2*loss2.item())
 
         total_loss = (lambda1*loss1) + (lambda2*loss2)
         total_tr_loss += total_loss.item()
@@ -157,20 +166,20 @@ def train_hydra(model, epoch, training_loader, lambda1, lambda2):
             tr_loss_step = d1_loss_step + d2_loss_step
 
             print(f"D1 Training Loss per 500 steps: {d1_loss_step}")
-            print(f"D2 Training Accuracy per 500 steps: {d1_accu_step}")
+            print(f"D1 Training Accuracy per 500 steps: {d1_accu_step}\n")
 
-            print(f"D1 Training Loss per 500 steps: {d2_loss_step}")
-            print(f"D2 Training Accuracy per 500 steps: {d2_accu_step}")
+            print(f"D2 Training Loss per 500 steps: {d2_loss_step}")
+            print(f"D2 Training Accuracy per 500 steps: {d2_accu_step}\n")
 
-            print(f"Total Training Loss per 500 steps: {tr_loss_step}")
+            print(f"Total Training Loss per 500 steps: {tr_loss_step}\n")
 
         optimizer.zero_grad()
         total_loss.backward()
         # # When using GPU
         optimizer.step()
 
-    print(f'The Total Accuracy for Epoch {epoch}: {(d1_n_correct*100)/d1_nb_tr_examples}')
-    print(f'The Total Accuracy for Epoch {epoch}: {(d2_n_correct*100)/d2_nb_tr_examples}')
+    print(f'Total D1 Accuracy for Epoch {epoch}: {(d1_n_correct*100)/d1_nb_tr_examples}')
+    print(f'Total D2 Accuracy for Epoch {epoch}: {(d2_n_correct*100)/d2_nb_tr_examples}')
     
     return
 
