@@ -12,6 +12,7 @@ from torch import cuda
 from tqdm import tqdm
 from sklearn.metrics import classification_report, f1_score, accuracy_score
 from sklearn.model_selection import train_test_split
+import wandb
 device = 'cuda' if cuda.is_available() else 'cpu'
 
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
@@ -104,21 +105,29 @@ def calcuate_accuracy(preds, targets):
     n_correct = (preds==targets).sum().item()
     return n_correct
 
-def train_hydra(model, epoch, training_loader, lambda1, lambda2):
+def train_hydra(model, epoch, training_loader, testing_loader, lambda1, lambda2):
     d1_tr_loss = 0
     d1_n_correct = 0
     d1_nb_tr_steps = 0
     d1_nb_tr_examples = 0
-
     d2_tr_loss = 0
     d2_n_correct = 0
     d2_nb_tr_steps = 0
     d2_nb_tr_examples = 0
-
     total_tr_loss = 0
+    
+    d1_val_loss = 0
+    d1_val_n_correct = 0
+    d1_nb_val_steps = 0
+    d1_nb_val_examples = 0
+    
+    d2_val_loss = 0
+    d2_val_n_correct = 0
+    d2_nb_val_steps = 0
+    d2_nb_val_examples = 0
+    total_val_loss = 0
 
     model.train()
-
     for loop, data in enumerate(tqdm(training_loader, 0)):
         d1_ids = data['ids'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
         d1_mask = data['mask'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
@@ -156,34 +165,109 @@ def train_hydra(model, epoch, training_loader, lambda1, lambda2):
         d2_nb_tr_steps += 1
         d2_nb_tr_examples += d2_sentiment.size(0)
         
-        if loop%500==0:
-            d1_loss_step = d1_tr_loss/d1_nb_tr_steps
-            d1_accu_step = (d1_n_correct*100)/d1_nb_tr_examples
 
-            d2_loss_step = d2_tr_loss/d2_nb_tr_steps
-            d2_accu_step = (d2_n_correct*100)/d2_nb_tr_examples
+        d1_loss_step = d1_tr_loss/d1_nb_tr_steps
+        d1_accu_step = (d1_n_correct*100)/d1_nb_tr_examples
 
-            tr_loss_step = d1_loss_step + d2_loss_step
 
-            print(f"D1 Training Loss per 500 steps: {d1_loss_step}")
-            print(f"D1 Training Accuracy per 500 steps: {d1_accu_step}\n")
+        d2_loss_step = d2_tr_loss/d2_nb_tr_steps
+        d2_accu_step = (d2_n_correct*100)/d2_nb_tr_examples
 
-            print(f"D2 Training Loss per 500 steps: {d2_loss_step}")
-            print(f"D2 Training Accuracy per 500 steps: {d2_accu_step}\n")
-
-            print(f"Total Training Loss per 500 steps: {tr_loss_step}\n")
-
+        tr_loss_step = d1_loss_step + d2_loss_step
+        
         optimizer.zero_grad()
         total_loss.backward()
         # # When using GPU
         optimizer.step()
+
+        train_metrics = {"d1_train_loss": d1_loss_step,
+            "d1_train_accuracy": d1_accu_step,
+            "d2_train_loss": d2_loss_step,
+            "d2_train_accuracy": d2_accu_step,
+            "total_train_loss": tr_loss_step}
+        
+        wandb.log({**train_metrics})
+
+    model.eval()
+    with torch.no_grad():
+        for _, data in enumerate(tqdm(testing_loader, 0)):
+            d1_ids_val = data['ids'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
+            d1_mask_val = data['mask'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
+            d1_token_type_ids_val = data['token_type_ids'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
+            d1_targets_val = data['labels'][0][~np.isnan(data['labels'][0].numpy()) == True].long().to(device, dtype = torch.long)
+
+            d2_ids_val = data['ids'][~np.isnan(data['labels'][1].numpy()) == True].to(device, dtype = torch.long)
+            d2_mask_val = data['mask'][~np.isnan(data['labels'][1].numpy()) == True].to(device, dtype = torch.long)
+            d2_token_type_ids_val = data['token_type_ids'][~np.isnan(data['labels'][1].numpy()) == True].to(device, dtype = torch.long)
+            d2_sentiment_val = data['labels'][1][~np.isnan(data['labels'][1].numpy()) == True].long().to(device, dtype = torch.long)
+
+            output1_val, _ = model(d1_ids_val, d1_mask_val, d1_token_type_ids_val)
+            _, output2_val = model(d2_ids_val, d2_mask_val, d2_token_type_ids_val)
+
+            loss1_val = loss_function(output1_val, d1_targets_val)
+            d1_val_loss += check_null(lambda1*loss1_val.item())
+
+            loss2_val = loss_function(output2_val, d2_sentiment_val)
+            d2_val_loss += check_null(lambda2*loss2_val.item())
+            
+            total_loss_val = (lambda1*loss1_val) + (lambda2*loss2_val)
+            total_val_loss += total_loss_val.item()
+            
+            big_val_d1, big_idx_d1_val = torch.max(output1_val.data, dim=1)
+            d1_val_n_correct += calcuate_accuracy(big_idx_d1_val, d1_targets_val)
+
+            big_val_d2, big_idx_d2_val = torch.max(output2_val.data, dim=1)
+            d2_val_n_correct += calcuate_accuracy(big_idx_d2_val, d2_sentiment_val)
+
+            d1_nb_val_steps += 1
+            d1_nb_val_examples += d1_targets_val.size(0)
+
+            d2_nb_val_steps += 1
+            d2_nb_val_examples += d2_sentiment_val.size(0)
+            
+            try:
+                d1_loss_step_val = d1_val_loss/d1_nb_val_steps
+            except ZeroDivisionError:
+                d1_loss_step_val = 0
+            try:
+                d1_accu_step_val = (d1_val_n_correct*100)/d1_nb_val_examples
+            except ZeroDivisionError:
+                d1_accu_step_val = 0
+
+
+            try:
+                d2_loss_step_val = d2_val_loss/d2_nb_val_steps
+            except ZeroDivisionError:
+                d2_loss_step_val = 0
+            
+            try:
+                d2_accu_step_val = (d2_val_n_correct*100)/d2_nb_val_examples
+            except ZeroDivisionError:
+                d2_accu_step_val = 0
+
+            tr_loss_step_val = d1_loss_step_val + d2_loss_step_val
+
+            test_metrics = {"d1_test_loss": d1_loss_step_val,
+            "d1_test_accuracy": d1_accu_step_val,
+            "d2_test_loss": d2_loss_step_val,
+            "d2_test_accuracy": d2_accu_step_val,
+            "total_test_loss": tr_loss_step_val}
+            
+    wandb.log({**test_metrics})
+    # print(f"D1 Training Loss per 500 steps: {d1_loss_step}")
+    # print(f"D1 Training Accuracy per 500 steps: {d1_accu_step}\n")
+
+    # print(f"D2 Training Loss per 500 steps: {d2_loss_step}")
+    # print(f"D2 Training Accuracy per 500 steps: {d2_accu_step}\n")
+
+    # print(f"Total Training Loss per 500 steps: {tr_loss_step}\n")
 
     print(f'Total D1 Accuracy for Epoch {epoch}: {(d1_n_correct*100)/d1_nb_tr_examples}')
     print(f'Total D2 Accuracy for Epoch {epoch}: {(d2_n_correct*100)/d2_nb_tr_examples}')
     
     return
 
-def valid_hyrda(model, testing_loader):
+def valid_hydra(model, testing_loader):
     model.eval()
     d1_predicts = []
     d2_predicts = []
@@ -228,6 +312,11 @@ dir = sys.argv[1]
 d_train = pd.read_csv(f"{dir}/train.csv")
 d_test = pd.read_csv(f"{dir}/test.csv")
 s_train = pd.read_csv(f"{dir}/tweets.csv")
+
+with open(f"{dir}/wandb_key.txt", "r") as f:
+    wandb_key = f.read()
+
+wandb.login(key=wandb_key)
 
 s_train.drop(s_train[s_train["textID"]=="fdb77c3752"].index, inplace=True)
 
@@ -289,22 +378,39 @@ sd_train_dataset = DataCombined(sd_train_data, tokenizer=tokenizer, max_len=MAX_
 sd_val_dataset = DataCombined(sd_val_data, tokenizer=tokenizer, max_len=MAX_LEN)
 
 sd_train_loader = DataLoader(sd_train_dataset, **train_params)
-sd_val_loader = DataLoader(sd_val_dataset, **train_params)
+sd_val_loader = DataLoader(sd_val_dataset, **test_params)
 
-net_hyrda = NetMultiTask()
-net_hyrda.to(device)
-EPOCHS = 3
+net_hydra = NetMultiTask()
+net_hydra.to(device)
+EPOCHS = 2
 loss_function = torch.nn.CrossEntropyLoss()
 
-optimizer = torch.optim.Adam(params = net_hyrda.parameters(), lr = LEARNING_RATE)
-for epoch in range(EPOCHS):
-    train_hydra(net_hyrda, epoch, sd_train_loader, lambda1 = 0.5, lambda2 = 0.5)
+optimizer = torch.optim.Adam(params = net_hydra.parameters(), lr = LEARNING_RATE)
 
-d1_predict, d2_predict  = valid_hyrda(net_hyrda, sd_val_loader)
+wandb.init(
+        project="bt5151_hydra",
+        config={
+            "epochs": 2,
+            "batch_size": 32,
+            "lr": 1e-5,
+            "optimizer": "Adam",
+            "loss": "CrossEntropyLoss",
+            "max_length": 512
+            })
+    
+# Copy your config 
+config = wandb.config
+for epoch in range(EPOCHS):
+    train_hydra(net_hydra, epoch, sd_train_loader, sd_val_loader, 
+                lambda1 = 0.5, lambda2 = 0.5)
+print('Finished training')
+wandb.finish()
+
+d1_predict, d2_predict  = valid_hydra(net_hydra, sd_val_loader)
 
 try:
-    net_bin = f"{dir}/models/net_hyrda.bin"
-    torch.save(net_hyrda, net_bin)
+    net_bin = f"{dir}/models/net_hydra.bin"
+    torch.save(net_hydra, net_bin)
 except Exception as e: 
     print(e)
 
