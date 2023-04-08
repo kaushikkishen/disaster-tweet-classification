@@ -67,8 +67,8 @@ s_train.drop(s_train[s_train["textID"]=="fdb77c3752"].index, inplace=True)
 # s_train['text'] = s_train.apply(lambda x: cleaning_URLs(x['text']),axis=1)
 
 # Drop duplicates
-d_train.drop_duplicates(subset=['text'], inplace=True)
-s_train.drop_duplicates(subset=['text'], inplace=True)
+# d_train.drop_duplicates(subset=['text'], inplace=True)
+# s_train.drop_duplicates(subset=['text'], inplace=True)
 
 d_train['id'] = 1
 s_train['id'] = 2

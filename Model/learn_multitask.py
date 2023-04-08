@@ -46,9 +46,9 @@ class NetMultiTask(torch.nn.Module):
 
 def map_sentiment(x):
     if x == "negative":
-        return 0
-    elif x =="neutral":
         return 1
+    elif x =="neutral":
+        return 0
     elif x =="positive":
         return 2
     else:
@@ -134,9 +134,6 @@ def calcuate_accuracy(preds, targets):
     n_correct = (preds==targets).sum().item()
     return n_correct
 
-def calcuate_accuracy(preds, targets):
-    n_correct = (preds==targets).sum().item()
-    return n_correct
 
 def train(model, epoch, training_loader, mode):
     tr_loss = 0
@@ -231,8 +228,8 @@ s_train = pd.read_csv(f"{dir}/tweets.csv")
 s_train.drop(s_train[s_train["textID"]=="fdb77c3752"].index, inplace=True)
 
 # Drop duplicates
-d_train.drop_duplicates(subset=['text'], inplace=True)
-s_train.drop_duplicates(subset=['text'], inplace=True)
+# d_train.drop_duplicates(subset=['text'], inplace=True)
+# s_train.drop_duplicates(subset=['text'], inplace=True)
 
 d_train['id'] = 1
 s_train['id'] = 2
