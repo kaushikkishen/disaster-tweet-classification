@@ -414,7 +414,7 @@ def train_evaluate(parameterization):
     LEARNING_RATE = 1e-05
     wandb.init(
         project="bt5151_hydra",
-        group ="bayes_optim2",
+        group ="bayes_optim5",
         config={
             "epochs": EPOCHS,
             "batch_size": TRAIN_BATCH_SIZE,
@@ -440,7 +440,7 @@ best_parameters, values, experiment, model = optimize(
     evaluation_function=train_evaluate,
     minimize = False, #False is also the default
     objective_name="t1_f1_score",
-    total_trials=10
+    total_trials = 7
 )
 
 print(best_parameters)
