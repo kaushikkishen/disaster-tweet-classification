@@ -11,6 +11,7 @@ from torch import cuda
 from tqdm import tqdm
 from sklearn.metrics import classification_report, f1_score, accuracy_score
 from sklearn.model_selection import train_test_split
+import wandb
 device = 'cuda' if cuda.is_available() else 'cpu'
 
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
@@ -27,8 +28,8 @@ class NetMultiTask(torch.nn.Module):
         self.dropout2 = torch.nn.Dropout(0.3)
         self.classifier2 = torch.nn.Linear(768, 3)
 
-    def forward(self, input_ids, attention_mask, token_type_ids):
-        output_1 = self.net(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
+    def forward(self, input_ids, attention_mask):
+        output_1 = self.net(input_ids=input_ids, attention_mask=attention_mask)
         hidden_state = output_1[0]
         pooler = hidden_state[:, 0]
       
@@ -76,17 +77,17 @@ class DisasterData(Dataset):
             max_length=self.max_len,
             truncation=True,
             padding = 'max_length',
-            return_token_type_ids=True
+            return_token_type_ids=False
         )
         ids = inputs['input_ids']
         mask = inputs['attention_mask']
-        token_type_ids = inputs["token_type_ids"]
+        #token_type_ids = inputs["token_type_ids"]
 
 
         return {
             'ids': torch.tensor(ids, dtype=torch.long),
             'mask': torch.tensor(mask, dtype=torch.long),
-            'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
+            #'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
             'targets': torch.tensor(self.targets[index], dtype=torch.long)
         }
    
@@ -116,13 +117,13 @@ class SentimentData(Dataset):
         )
         ids = inputs['input_ids']
         mask = inputs['attention_mask']
-        token_type_ids = inputs["token_type_ids"]
+        #token_type_ids = inputs["token_type_ids"]
 
 
         return {
             'ids': torch.tensor(ids, dtype=torch.long),
             'mask': torch.tensor(mask, dtype=torch.long),
-            'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
+            #'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
             'targets': torch.tensor(self.targets[index], dtype=torch.long)
         }
 
@@ -135,21 +136,26 @@ def calcuate_accuracy(preds, targets):
     return n_correct
 
 
-def train(model, epoch, training_loader, mode):
+def train(model, training_loader, testing_loader, mode):
     tr_loss = 0
     n_correct = 0
     nb_tr_steps = 0
     nb_tr_examples = 0
+
+    tr_loss_val = 0
+    n_correct_val = 0
+    nb_tr_steps_val = 0
+    nb_tr_examples_val = 0
+
     model.train()
 
-    
     for _,data in enumerate(tqdm(training_loader, 0)):
         ids = data['ids'].to(device, dtype = torch.long)
         mask = data['mask'].to(device, dtype = torch.long)
-        token_type_ids = data['token_type_ids'].to(device, dtype = torch.long)
+        #token_type_ids = data['token_type_ids'].to(device, dtype = torch.long)
         targets = data['targets'].to(device, dtype = torch.long)
 
-        output1, output2 = model(ids, mask, token_type_ids)
+        output1, output2 = model(ids, mask)
 
         if mode == 1:
             output = output1
@@ -167,22 +173,52 @@ def train(model, epoch, training_loader, mode):
         nb_tr_steps += 1
         nb_tr_examples+=targets.size(0)
         
-        if _%5000==0:
-            loss_step = tr_loss/nb_tr_steps
-            accu_step = (n_correct*100)/nb_tr_examples 
-            print(f"Training Loss per 5000 steps: {loss_step}")
-            print(f"Training Accuracy per 5000 steps: {accu_step}")
+        loss_step = tr_loss/nb_tr_steps
+        accu_step = (n_correct*100)/nb_tr_examples
+
+        train_metrics = {"train_loss": loss_step,
+                         "train_accuracy": accu_step}
+        
+        wandb.log({**train_metrics})
 
         optimizer.zero_grad()
         loss.backward()
         # # When using GPU
         optimizer.step()
 
-    print(f'The Total Accuracy for Epoch {epoch}: {(n_correct*100)/nb_tr_examples}')
-    epoch_loss = tr_loss/nb_tr_steps
-    epoch_accu = (n_correct*100)/nb_tr_examples
-    print(f"Training Loss Epoch: {epoch_loss}")
-    print(f"Training Accuracy Epoch: {epoch_accu}")
+    model.eval()
+    with torch.no_grad():
+        for _, data in enumerate(testing_loader):
+            ids_val = data['ids'].to(device, dtype = torch.long)
+            mask_val = data['mask'].to(device, dtype = torch.long)
+            #token_type_ids_val = data['token_type_ids'].to(device, dtype = torch.long)
+            targets_val = data['targets'].to(device, dtype = torch.long)
+
+            output1_val, output2_val = model(ids_val, mask_val)
+
+            if mode == 1:
+                output_val = output1_val
+            elif mode == 2:
+                output_val = output2_val
+            else:
+                assert False, 'Bad Task ID passed'
+
+            loss_val = loss_function(output_val, targets_val)
+            tr_loss_val += loss_val.item()
+            big_val_val, big_idx_val = torch.max(output_val.data, dim=1)
+            n_correct_val += calcuate_accuracy(big_idx_val, targets_val)
+
+            nb_tr_steps_val += 1
+            nb_tr_examples_val += targets_val.size(0)
+    
+            loss_step_val = tr_loss_val/nb_tr_steps_val
+            accu_step_val = (n_correct_val*100)/nb_tr_examples_val
+
+            val_metrics = {"val_loss": loss_step_val,
+                "val_accuracy": accu_step_val}
+
+        wandb.log({**val_metrics})
+
     return
 
 def valid(model, testing_loader, mode):
@@ -195,10 +231,10 @@ def valid(model, testing_loader, mode):
         for _, data in enumerate(tqdm(testing_loader, 0)):
             ids = data['ids'].to(device, dtype = torch.long)
             mask = data['mask'].to(device, dtype = torch.long)
-            token_type_ids = data['token_type_ids'].to(device, dtype = torch.long)
+            #token_type_ids = data['token_type_ids'].to(device, dtype = torch.long)
             targets = data['targets'].to(device, dtype = torch.long)
 
-            output1, output2 = model(ids, mask, token_type_ids)
+            output1, output2 = model(ids, mask)
 
             if mode == 1:
                 output = output1
@@ -227,6 +263,10 @@ s_train = pd.read_csv(f"{dir}/tweets.csv")
 
 s_train.drop(s_train[s_train["textID"]=="fdb77c3752"].index, inplace=True)
 
+with open(f"{dir}/wandb_key.txt", "r") as f:
+    wandb_key = f.read()
+
+wandb.login(key=wandb_key)
 # Drop duplicates
 # d_train.drop_duplicates(subset=['text'], inplace=True)
 # s_train.drop_duplicates(subset=['text'], inplace=True)
@@ -290,7 +330,6 @@ d2_train_loader = DataLoader(d2_train_set, **train_params)
 d2_val_loader = DataLoader(d2_val_set, **test_params)
 
 LEARNING_RATE = 1e-05
-
 # epochs = 30
 # Predict on first task
 net1 = NetMultiTask()
@@ -300,13 +339,34 @@ net1.to(device)
 # for param in net1.net.parameters():
 #     param.requires_grad = False
 
-EPOCHS = 3
+EPOCHS = 2
 loss_function = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(params = net1.parameters(), lr = LEARNING_RATE)
+
+wandb.init(
+        project="bt5151_multitask",
+        group='task1',
+        config={
+            "epochs": EPOCHS,
+            "batch_size": TRAIN_BATCH_SIZE,
+            "lr": LEARNING_RATE,
+            "optimizer": "Adam",
+            "loss": "CrossEntropyLoss",
+            "max_length": MAX_LEN
+            })
+config = wandb.config
 for epoch in range(EPOCHS):
-    train(net1, epoch, d1_train_loader, mode = 1)
+    train(net1, d1_train_loader, d1_val_loader, mode = 1)
+    print('Finished training')
+
 
 predicts_d1  = valid(net1, d1_val_loader, mode = 1)
+d1_f1 = f1_score(predicts_d1.target, predicts_d1.predict,  average='weighted')
+d1_accuracy = accuracy_score(predicts_d1.target, predicts_d1.predict)
+
+eval_metrics_d1 = {"val_f1_score": d1_f1, "val_fin_accuracy": d1_accuracy}
+wandb.log({**eval_metrics_d1})
+wandb.finish()
 print(classification_report(predicts_d1.target, predicts_d1.predict))
 
 # Predict on second task
@@ -318,11 +378,31 @@ net2.to(device)
 
 loss_function = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(params = net2.parameters(), lr = LEARNING_RATE)
-EPOCHS = 4
-for epoch in range(EPOCHS):
-    train(net2, epoch, d2_train_loader, mode = 2)
+EPOCHS_T2 = 2
+
+wandb.init(
+        project="bt5151_multitask",
+        group='task2',
+        config={
+            "epochs": EPOCHS_T2,
+            "batch_size": TRAIN_BATCH_SIZE,
+            "lr": LEARNING_RATE,
+            "optimizer": "Adam",
+            "loss": "CrossEntropyLoss",
+            "max_length": MAX_LEN
+            })
+config = wandb.config
+for epoch in range(EPOCHS_T2):
+    train(net2, d2_train_loader, d2_val_loader, mode = 2)
+print('Finished training')
 
 predicts_d2  = valid(net2, d2_val_loader, mode = 2)
+d2_f1 = f1_score(predicts_d2.target, predicts_d2.predict, average='weighted')
+d2_accuracy = accuracy_score(predicts_d2.target, predicts_d2.predict)
+eval_metrics_d2 = {"val_f1_score": d2_f1, "val_fin_accuracy": d2_accuracy}
+wandb.log({**eval_metrics_d2})
+wandb.finish()
+
 print(classification_report(predicts_d2.target, predicts_d2.predict))
 
 net1_bin = f"{dir}/models/net1.bin"
@@ -333,7 +413,7 @@ predicts_d2.to_csv(f"{dir}/predicts/predicts_d2.csv")
 torch.save(net1, net1_bin)
 torch.save(net2, net2_bin)
 
-print(f"D1 F1: {f1_score(predicts_d1.target, predicts_d1.predict)}\n"
-      f"D2 F2: {f1_score(predicts_d2.target, predicts_d2.predict, average='weighted')}\n"
-      f"D1 Accuracy: {accuracy_score(predicts_d1.target, predicts_d1.predict)}\n"
-      f"D2 Accuracy: {accuracy_score(predicts_d2.target, predicts_d2.predict)}\n")
+print(f"D1 F1: {d1_f1}\n"
+      f"D2 F2: {d2_f1}\n"
+      f"D1 Accuracy: {d1_accuracy}\n"
+      f"D2 Accuracy: {d2_accuracy}\n")
