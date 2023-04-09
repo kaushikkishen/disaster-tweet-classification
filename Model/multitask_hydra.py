@@ -100,6 +100,12 @@ def check_null(x):
     else:
         return x
 
+def null_tensor(tensor):
+    if torch.isnan(tensor) == True:
+        return torch.tensor(0)
+    else:
+        return tensor
+
 
 def calcuate_accuracy(preds, targets):
     n_correct = (preds==targets).sum().item()
@@ -144,9 +150,11 @@ def train_hydra(model, epoch, training_loader, testing_loader, lambda1, lambda2)
         _, output2 = model(d2_ids, d2_mask, d2_token_type_ids)
 
         loss1 = loss_function(output1, d1_targets)
+        loss1 = null_tensor(loss1)
         d1_tr_loss += check_null(lambda1*loss1.item())
 
         loss2 = loss_function(output2, d2_sentiment)
+        loss2 = null_tensor(loss2)
         d2_tr_loss += check_null(lambda2*loss2.item())
 
         total_loss = (lambda1*loss1) + (lambda2*loss2)
@@ -205,9 +213,11 @@ def train_hydra(model, epoch, training_loader, testing_loader, lambda1, lambda2)
             _, output2_val = model(d2_ids_val, d2_mask_val, d2_token_type_ids_val)
 
             loss1_val = loss_function(output1_val, d1_targets_val)
+            loss1_val = null_tensor(loss1_val)
             d1_val_loss += check_null(lambda1*loss1_val.item())
 
             loss2_val = loss_function(output2_val, d2_sentiment_val)
+            loss2_val = null_tensor(loss2_val)
             d2_val_loss += check_null(lambda2*loss2_val.item())
             
             total_loss_val = (lambda1*loss1_val) + (lambda2*loss2_val)
@@ -386,28 +396,36 @@ EPOCHS = 2
 loss_function = torch.nn.CrossEntropyLoss()
 
 optimizer = torch.optim.Adam(params = net_hydra.parameters(), lr = LEARNING_RATE)
-
+LAMBDA1 = 0.6916868733242154
+LAMBDA2 = 0.6862697005271912
 wandb.init(
         project="bt5151_hydra",
+        group ="fix_loss",
         config={
-            "epochs": 2,
-            "batch_size": 32,
-            "lr": 1e-5,
+            "epochs": EPOCHS,
+            "batch_size": TRAIN_BATCH_SIZE,
+            "lr": LEARNING_RATE,
             "optimizer": "Adam",
             "loss": "CrossEntropyLoss",
-            "max_length": 512
+            "max_length": MAX_LEN,
+            "lambda1": LAMBDA1,
+            "lambda2": LAMBDA2,
             })
-    
+
 # Copy your config 
 config = wandb.config
 for epoch in range(EPOCHS):
     train_hydra(net_hydra, epoch, sd_train_loader, sd_val_loader, 
-                lambda1 = 0.5, lambda2 = 0.5)
+                lambda1 = LAMBDA1, lambda2 = LAMBDA2)
 print('Finished training')
-wandb.finish()
 
 d1_predict, d2_predict  = valid_hydra(net_hydra, sd_val_loader)
-
+fin_metrics = {"f1_score": f1_score(d1_predict.target, d1_predict.predict, average='weighted'),
+               "d2_f1": f1_score(d2_predict.target, d2_predict.predict, average='weighted'),
+               "d1_fin_accuracy": accuracy_score(d1_predict.target, d1_predict.predict),
+               "d2_fin_accuracy": accuracy_score(d2_predict.target, d2_predict.predict)}
+wandb.log({**fin_metrics})
+wandb.finish()
 try:
     net_bin = f"{dir}/models/net_hydra.bin"
     torch.save(net_hydra, net_bin)
