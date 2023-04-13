@@ -56,7 +56,42 @@ def map_sentiment(x):
         return 2
     else:
         return None
-    
+
+class DisasterData(Dataset):
+    def __init__(self, dataframe, tokenizer, max_len):
+        self.tokenizer = tokenizer
+        self.data = dataframe
+        self.text = dataframe.text
+        self.targets = self.data.target
+        self.max_len = max_len
+
+    def __len__(self):
+        return len(self.text)
+
+    def __getitem__(self, index):
+        text = str(self.text[index])
+        text = " ".join(text.split())
+
+        inputs = self.tokenizer.encode_plus(
+            text,
+            None,
+            add_special_tokens=True,
+            max_length=self.max_len,
+            truncation=True,
+            padding = 'max_length',
+            return_token_type_ids=False
+        )
+        ids = inputs['input_ids']
+        mask = inputs['attention_mask']
+        #token_type_ids = inputs["token_type_ids"]
+
+
+        return {
+            'ids': torch.tensor(ids, dtype=torch.long),
+            'mask': torch.tensor(mask, dtype=torch.long),
+            #'token_type_ids': torch.tensor(token_type_ids, dtype=torch.long),
+            'targets': torch.tensor(self.targets[index], dtype=torch.long)
+        }    
 class DataCombined(Dataset):
     def __init__(self, dataframe, tokenizer, max_len):
         self.tokenizer = tokenizer
@@ -100,6 +135,12 @@ def check_null(x):
         return 0
     else:
         return x
+
+def null_tensor(tensor):
+    if torch.isnan(tensor) == True:
+        return torch.tensor(0)
+    else:
+        return tensor
 
 
 def calcuate_accuracy(preds, targets):
@@ -148,9 +189,11 @@ def train_hydra(model, training_loader, testing_loader, lr, lambda1, lambda2):
         _, output2 = model(d2_ids, d2_mask)
 
         loss1 = loss_function(output1, d1_targets)
+        loss1 = null_tensor(loss1)
         d1_tr_loss += check_null(lambda1*loss1.item())
 
         loss2 = loss_function(output2, d2_sentiment)
+        loss2 = null_tensor(loss2)
         d2_tr_loss += check_null(lambda2*loss2.item())
 
         total_loss = (lambda1*loss1) + (lambda2*loss2)
@@ -209,9 +252,11 @@ def train_hydra(model, training_loader, testing_loader, lr, lambda1, lambda2):
             _, output2_val = model(d2_ids_val, d2_mask_val)
 
             loss1_val = loss_function(output1_val, d1_targets_val)
+            loss1_val = null_tensor(loss1_val)
             d1_val_loss += check_null(lambda1*loss1_val.item())
 
             loss2_val = loss_function(output2_val, d2_sentiment_val)
+            loss2_val = null_tensor(loss2_val)
             d2_val_loss += check_null(lambda2*loss2_val.item())
             
             total_loss_val = (lambda1*loss1_val) + (lambda2*loss2_val)
@@ -308,10 +353,10 @@ def valid_t1(model, testing_loader):
     model.eval()
     with torch.no_grad():
         for _, data in enumerate(tqdm(testing_loader, 0)):
-            d1_ids_val = data['ids'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
-            d1_mask_val = data['mask'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
-            #d1_token_type_ids_val = data['token_type_ids'][~np.isnan(data['labels'][0].numpy()) == True].to(device, dtype = torch.long)
-            d1_targets_val = data['labels'][0][~np.isnan(data['labels'][0].numpy()) == True].long().to(device, dtype = torch.long)
+            d1_ids_val = data['ids'].to(device, dtype = torch.long)
+            d1_mask_val = data['mask'].to(device, dtype = torch.long)
+            #d1_token_type_ids_val = data['token_type_ids'].to(device, dtype = torch.long)
+            d1_targets_val = data['targets'].to(device, dtype = torch.long)
 
             output1_val, _ = model(d1_ids_val, d1_mask_val)
 
@@ -378,6 +423,8 @@ d_val_data.reset_index(inplace=True, drop = True)
 s_train_data.reset_index(inplace=True, drop = True)
 s_val_data.reset_index(inplace=True,  drop = True)
 
+# Create D1 and D2 Datasets
+
 s_train_concat = s_train_data.rename(columns={"target":"sentiment"}).copy()
 s_val_concat = s_val_data.rename(columns={"target":"sentiment"}).copy()
 
@@ -405,6 +452,9 @@ sd_val_dataset = DataCombined(sd_val_data, tokenizer=tokenizer, max_len=MAX_LEN)
 sd_train_loader = DataLoader(sd_train_dataset, **train_params)
 sd_val_loader = DataLoader(sd_val_dataset, **test_params)
 
+d1_val_set = DisasterData(d_val_data, tokenizer, MAX_LEN)
+d1_val_loader = DataLoader(d1_val_set, **test_params)
+
 def train_evaluate(parameterization):
     print(parameterization)
     
@@ -414,7 +464,7 @@ def train_evaluate(parameterization):
     LEARNING_RATE = 1e-05
     wandb.init(
         project="bt5151_hydra",
-        group ="bayes_optim5",
+        group ="bayes_optim6",
         config={
             "epochs": EPOCHS,
             "batch_size": TRAIN_BATCH_SIZE,
@@ -428,7 +478,7 @@ def train_evaluate(parameterization):
                     lambda1 = parameterization["lambda1"], 
                     lambda2 = parameterization["lambda2"])
     wandb.finish()
-    return valid_t1(net_hydra, sd_val_loader)
+    return valid_t1(net_hydra, d1_val_loader)
 
 best_parameters, values, experiment, model = optimize(
     parameters=[
