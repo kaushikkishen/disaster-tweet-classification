@@ -396,8 +396,12 @@ EPOCHS = 2
 loss_function = torch.nn.CrossEntropyLoss()
 
 optimizer = torch.optim.Adam(params = net_hydra.parameters(), lr = LEARNING_RATE)
+# LAMBDA1 = 0.5
+# LAMBDA2 = 0.5
+
 LAMBDA1 = 0.6899408753961325
 LAMBDA2 = 0.4041465884074569
+
 wandb.init(
         project="bt5151_hydra",
         group ="fix_loss",
