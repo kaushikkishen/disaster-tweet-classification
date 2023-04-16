@@ -16,6 +16,14 @@ import wandb
 from ax import optimize
 device = 'cuda' if cuda.is_available() else 'cpu'
 
+"""
+This script provides the optimization loop for the multi-task learning model 
+with the custom weight loss function using Bayesian Optimization. This prints 
+out the best lambda's and the corresponding D1_val F1 score
+
+"""
+
+
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
 class NetMultiTask(torch.nn.Module):
     def __init__(self):

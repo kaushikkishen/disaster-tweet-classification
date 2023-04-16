@@ -17,6 +17,13 @@ from transformers import TrainingArguments, Trainer
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import evaluate
 
+"""
+This script provides the training loop for our team's Strategy 1. This will output
+model files in a directory
+
+"""
+
+
 def map_sentiment(x):
     if x == "negative":
         return 0

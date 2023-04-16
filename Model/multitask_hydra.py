@@ -15,6 +15,14 @@ from sklearn.model_selection import train_test_split
 import wandb
 device = 'cuda' if cuda.is_available() else 'cpu'
 
+"""
+This script provides the training loop for the multi-task learning model 
+with the custom weight loss function which outputs a model.bin file and 
+predictions for further analysis.
+
+"""
+
+
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
 class NetMultiTask(torch.nn.Module):
     def __init__(self):

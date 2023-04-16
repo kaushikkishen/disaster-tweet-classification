@@ -10,6 +10,12 @@ from tqdm import tqdm
 device = 'cuda:0' if cuda.is_available() else 'cpu'
 from transformers import pipeline
 
+"""
+This code creates a pipline for inference on Strategy 1 model
+
+"""
+
+
 def data_iterator(df):
     for i in range(df.shape[0]):
         yield str(df.text[i])
