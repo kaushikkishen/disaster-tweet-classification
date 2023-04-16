@@ -14,6 +14,13 @@ from sklearn.model_selection import train_test_split
 import wandb
 device = 'cuda' if cuda.is_available() else 'cpu'
 
+"""
+This script provides the training loop for  multi-task learning where
+Task 1 and Task 2 are trained separately. This ouputs model.bin files and
+predictions for further analysis.
+
+"""
+
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base", do_lower_case=True)
 class NetMultiTask(torch.nn.Module):
     def __init__(self):
@@ -45,6 +52,7 @@ class NetMultiTask(torch.nn.Module):
         
         return output1, output2
 
+# Mapping the text sentiment labels
 def map_sentiment(x):
     if x == "negative":
         return 1
@@ -55,6 +63,7 @@ def map_sentiment(x):
     else:
         return None
     
+# Custom PyTorch Datasets for Disaster and Sentiment Tweets
 class DisasterData(Dataset):
     def __init__(self, dataframe, tokenizer, max_len):
         self.tokenizer = tokenizer
@@ -135,7 +144,7 @@ def calcuate_accuracy(preds, targets):
     n_correct = (preds==targets).sum().item()
     return n_correct
 
-
+# Training loop for multi-task learning to take into account the two outputs
 def train(model, training_loader, testing_loader, mode):
     tr_loss = 0
     n_correct = 0
