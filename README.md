@@ -34,11 +34,11 @@ Results
 
 **Confusion Matrix for Task 1**
 
-![t1_tm1](/notebooks%202/t1_tm1.png)
+![t1_tm1](/notebooks/t1_tm1.png)
 
 **Confusion Matrix for Task 2**
 
-![t2_tm1](/notebooks%202/t2_tm1.png)
+![t2_tm1](/notebooks/t2_tm1.png)
 
 
 ### Method 2 ###
@@ -51,11 +51,11 @@ Minimizing a combined weighted loss, $\lambda_1l_1 + \lambda_2l_2$  where $\lamb
 
 **Confusion Matrix for Task 1**
 
-![t1_tm2](/notebooks%202/t1_tm2.png)
+![t1_tm2](/notebooks/t1_tm2.png)
 
 **Confusion Matrix for Task 2**
 
-![t2_tm2](/notebooks%202/t2_tm2.png)
+![t2_tm2](/notebooks/t2_tm2.png)
 
 
 ### Method 3 ###
