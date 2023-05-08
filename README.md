@@ -1,4 +1,4 @@
-Disaster Tweet Classification Through Multi-Task Learning and Bayesian Optimization <!-- omit from toc -->
+Disaster Tweet Classification <!-- omit from toc -->
 ==============================
 
 - [Summary](#summary)
