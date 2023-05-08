@@ -7,13 +7,14 @@ Disaster Tweet Classification Through Multi-Task Learning and Bayesian Optimizat
   - [Method 1](#method-1)
   - [Method 2](#method-2)
   - [Method 3](#method-3)
+- [Team Members](#team-members)
 
 
 Summary
 ------------
 Developed and trained a RoBERTa-based multi-task model to classify tweets whether they refer to a real disaster or not. Leverages a separete tweet dataset with sentiment labels to help in the disaster classification task. This is achieved by utilizing a neural network architecture with two heads, one for disaster classification (Task 1) and one for sentiment classification (Task 2). A weighted loss, which weights and sums the losses of the two classification tasks is ultimately used during back propagation to incorporate sentiment information during training. The weights of the loss function are tuned using Bayesian Optimization which maximizes the F1 score of Task 1.
 
-This repository also includes two alternative strategies in predicting disaster tweets but results are not reported here.
+This repository also includes two alternative strategies in predicting disaster tweets but results are not reported.
 
 Data Sources
 ------------
@@ -65,3 +66,9 @@ After tuning, inference was made on unlabeled test tweets and predictions were s
 | Task                    | Test Accuracy |
 | :---------------------- | ------------: |
 | Disaster Classification |        83.85% |
+
+Team Members
+------------
+- Nathan Casanova
+- Kaushik Asok
+- Pragati Sangal
